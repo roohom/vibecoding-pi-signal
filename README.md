@@ -8,6 +8,17 @@ This version is built around an 8-pixel WS2812/NeoPixel ring, but the Mac side
 only speaks a small state protocol, so the Pi renderer can later be replaced
 with a dot-matrix display, LCD, or another signal device.
 
+## Inspiration
+
+This project is inspired by and references the excellent idea and interaction
+model from [starlight36/vibecoding-signal-light](https://github.com/starlight36/vibecoding-signal-light).
+Thanks to that project for proving that an external ambient signal can make AI
+coding agent state visible without pulling attention back into the terminal.
+
+This Raspberry Pi version keeps the same core spirit while using a small HTTP
+state protocol and a replaceable Pi-side renderer, so the hardware can evolve
+from a signal ring to a dot-matrix screen or LCD later.
+
 ## States
 
 ```text
