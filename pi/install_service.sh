@@ -20,6 +20,7 @@ Type=simple
 User=root
 WorkingDirectory=${APP_DIR}
 Environment=PYTHONPATH=${PYTHONPATH_EXTRA}:${APP_DIR}
+ExecStartPre=-/bin/fuser -k ${PORT}/tcp
 ExecStart=/usr/bin/python3 -m vibecoding_pi_signal.server --host 0.0.0.0 --port ${PORT} --brightness ${BRIGHTNESS} --count ${LED_COUNT} --pin ${LED_PIN}
 Restart=on-failure
 RestartSec=2
