@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vibecoding-pi-signal"
+version = "0.2.0"
+description = "Raspberry Pi signal light for AI coding agent lifecycle hooks"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [{name = "roohom"}]
+
+[project.scripts]
+ai-signal = "vibecoding_pi_signal.hooks.cli:main"
+vibecoding-signal-server = "vibecoding_pi_signal.server:main"
+
+[tool.setuptools.packages.find]
+include = ["vibecoding_pi_signal*"]
