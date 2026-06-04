@@ -44,6 +44,16 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(result["aggregate_state"], "off")
         self.assertEqual(client.calls[-1][0], "off")
 
+    def test_clear_sessions_by_prefix_keeps_other_agents(self):
+        runtime, client = self.make_runtime()
+        runtime.set_session_state("codex:a", "working", "test")
+        runtime.set_session_state("claude:b", "permission", "test")
+        result = runtime.clear_sessions_by_prefix("codex:", source="test")
+        self.assertEqual(result["aggregate_state"], "permission")
+        self.assertIn("claude:b", result["sessions"])
+        self.assertNotIn("codex:a", result["sessions"])
+        self.assertEqual(client.calls[-1][0], "permission")
+
     def test_stale_session_is_pruned(self):
         runtime, _client = self.make_runtime()
         sessions = {

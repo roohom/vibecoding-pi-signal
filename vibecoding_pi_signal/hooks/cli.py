@@ -14,6 +14,10 @@ from ..runtime import SignalRuntime
 from ..states import AGENT_EVENT_MAPS
 
 
+SESSION_KEYS = ("session_id", "sessionId", "conversation_id", "conversationId", "cwd")
+TERMINAL_EVENTS = {"Stop", "stop", "SessionEnd", "sessionEnd"}
+
+
 def read_stdin_json():
     if sys.stdin.isatty():
         return {}
@@ -30,7 +34,7 @@ def read_stdin_json():
 
 
 def infer_session(agent, payload, fallback):
-    for key in ("session_id", "sessionId", "conversation_id", "conversationId", "cwd"):
+    for key in SESSION_KEYS:
         value = payload.get(key)
         if value:
             return "{}:{}".format(agent, value)
@@ -52,6 +56,10 @@ def event_to_state(agent, event, payload):
         return "blocked"
     mapping = AGENT_EVENT_MAPS.get(agent, {})
     return mapping.get(event, "working")
+
+
+def payload_has_session(payload):
+    return any(payload.get(key) for key in SESSION_KEYS)
 
 
 def append_hook_log(agent, event, session, state):
@@ -115,12 +123,25 @@ def main(argv=None):
                 session = args.session or infer_session(args.agent, payload, os.getcwd())
                 text = args.text or infer_text(event, payload)
                 append_hook_log(args.agent, event, session, state)
-                result = runtime.set_session_state(
-                    session=session,
-                    state=state,
-                    source="{}:{}".format(args.agent, event),
-                    text=text,
-                )
+                source = "{}:{}".format(args.agent, event)
+                if (
+                    args.agent in ("codex", "claude")
+                    and event in TERMINAL_EVENTS
+                    and not args.session
+                    and not payload_has_session(payload)
+                ):
+                    result = runtime.clear_sessions_by_prefix(
+                        "{}:".format(args.agent),
+                        source=source,
+                        text=text,
+                    )
+                else:
+                    result = runtime.set_session_state(
+                        session=session,
+                        state=state,
+                        source=source,
+                        text=text,
+                    )
     except Exception as exc:
         print("signal hook failed: {}".format(exc), file=sys.stderr)
         return 1

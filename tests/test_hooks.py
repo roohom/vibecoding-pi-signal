@@ -1,6 +1,6 @@
 import unittest
 
-from vibecoding_pi_signal.hooks.cli import event_to_state
+from vibecoding_pi_signal.hooks.cli import event_to_state, payload_has_session
 
 
 class HookMappingTest(unittest.TestCase):
@@ -12,6 +12,10 @@ class HookMappingTest(unittest.TestCase):
 
     def test_error_payload_wins(self):
         self.assertEqual(event_to_state("codex", "PostToolUse", {"error": True}), "blocked")
+
+    def test_payload_session_detection(self):
+        self.assertTrue(payload_has_session({"session_id": "abc"}))
+        self.assertFalse(payload_has_session({}))
 
 
 if __name__ == "__main__":

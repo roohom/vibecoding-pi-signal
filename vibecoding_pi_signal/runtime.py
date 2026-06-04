@@ -101,6 +101,29 @@ class SignalRuntime:
             "response": response,
         }
 
+    def clear_sessions_by_prefix(self, prefix, source="runtime", text=""):
+        sessions = self.prune_sessions(self.store.load())
+        sessions = {
+            session: item
+            for session, item in sessions.items()
+            if not session.startswith(prefix)
+        }
+        aggregate, meta = self.aggregate_state(sessions)
+        self.store.save(sessions)
+        response = self.client.post_state(
+            aggregate,
+            source=source,
+            session=meta.get("session", prefix + "*"),
+            text=text,
+        )
+        return {
+            "ok": True,
+            "session_state": "idle",
+            "aggregate_state": aggregate,
+            "sessions": sessions,
+            "response": response,
+        }
+
     def clear_all(self):
         self.store.save({})
         response = self.client.post_state("off", source="runtime", session="all", text="")
