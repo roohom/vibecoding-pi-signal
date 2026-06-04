@@ -22,10 +22,10 @@ from a signal ring to a dot-matrix screen or LCD later.
 ## States
 
 ```text
-idle       soft green breathing
+idle       very low green steady
 thinking   purple/blue spinner
-working    dim green chase
-permission amber flashes, slower interval
+working    subtle dim teal chase
+permission amber flashes, needs user action
 blocked    red flashes, shorter interval
 done       short green breathing
 off        LEDs off
@@ -56,6 +56,8 @@ Endpoints:
 
 ```text
 GET  /health
+GET  /config
+POST /config {"idle_level":11,"idle_pixels":4,"idle_offset":0}
 GET  /state/<state>
 POST /signal {"state":"working","source":"codex","session":"abc"}
 ```

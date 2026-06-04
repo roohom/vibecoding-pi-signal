@@ -30,6 +30,7 @@ LED_DMA = 10
 LED_INVERT = False
 LED_BRIGHTNESS = 24
 LED_CHANNEL = 0
+DEFAULT_SETTINGS = {"idle_level": 11, "idle_pixels": 4, "idle_offset": 0}
 
 
 class ReusableHTTPServer(HTTPServer):
@@ -81,6 +82,7 @@ class Animator:
         self.ring = ring
         self.state = "off"
         self.meta = {}
+        self.settings = dict(DEFAULT_SETTINGS)
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self._run)
@@ -97,6 +99,45 @@ class Animator:
     def get_state(self):
         with self.lock:
             return self.state, dict(self.meta)
+
+    def get_settings(self):
+        with self.lock:
+            return dict(self.settings)
+
+    def update_settings(self, payload):
+        updates = {}
+        if "idle_level" in payload:
+            updates["idle_level"] = self._channel_value(payload["idle_level"], "idle_level")
+        if "idle_pixels" in payload:
+            updates["idle_pixels"] = self._bounded_int(payload["idle_pixels"], "idle_pixels", 0, self.ring.count())
+        if "idle_offset" in payload:
+            updates["idle_offset"] = self._bounded_int(payload["idle_offset"], "idle_offset", 0, self.ring.count() - 1)
+        with self.lock:
+            self.settings.update(updates)
+            return dict(self.settings)
+
+    def rotate_idle_pixels(self):
+        with self.lock:
+            self.settings["idle_offset"] = (self.settings["idle_offset"] + 1) % self.ring.count()
+            return dict(self.settings)
+
+    def _channel_value(self, value, name):
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise ValueError("{} must be an integer".format(name))
+        if parsed < 0 or parsed > 255:
+            raise ValueError("{} must be between 0 and 255".format(name))
+        return parsed
+
+    def _bounded_int(self, value, name, minimum, maximum):
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise ValueError("{} must be an integer".format(name))
+        if parsed < minimum or parsed > maximum:
+            raise ValueError("{} must be between {} and {}".format(name, minimum, maximum))
+        return parsed
 
     def close(self):
         self.stop_event.set()
@@ -116,15 +157,19 @@ class Animator:
             self.ring.off()
             return 0.5
         if state == "idle":
-            level = int(4 + 4 * (1 + math.sin(phase / 7.0)))
-            self.ring.fill(color(0, level, 0))
-            return 0.18
+            settings = self.get_settings()
+            pixels = [0] * self.ring.count()
+            for index in self._evenly_spaced_indexes(settings["idle_pixels"]):
+                pixel_index = (index + settings["idle_offset"]) % self.ring.count()
+                pixels[pixel_index] = color(0, settings["idle_level"], 0)
+            self.ring.set_pixels(pixels)
+            return 1.0
         if state == "thinking":
             self._spinner(phase, color(10, 0, 24), color(0, 12, 24), color(0, 0, 2))
             return 0.14
         if state == "working":
-            self._chase(phase, color(0, 24, 14), color(0, 8, 5))
-            return 0.12
+            self._chase(phase, color(0, 6, 5), color(0, 1, 1))
+            return 0.28
         if state == "permission":
             self.ring.fill(color(28, 16, 0) if phase % 8 < 3 else 0)
             return 0.24
@@ -162,6 +207,14 @@ class Animator:
                 pixels.append(0)
         self.ring.set_pixels(pixels)
 
+    def _evenly_spaced_indexes(self, lit_count):
+        count = self.ring.count()
+        if lit_count <= 0:
+            return []
+        if lit_count >= count:
+            return list(range(count))
+        return sorted(set(int(index * count / float(lit_count)) for index in range(lit_count)))
+
 
 class RequestHandler(BaseHTTPRequestHandler):
     animator = None
@@ -169,14 +222,16 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             state, meta = self.animator.get_state()
-            return self._json(200, {"ok": True, "state": state, "meta": meta})
+            return self._json(200, {"ok": True, "state": state, "meta": meta, "settings": self.animator.get_settings()})
+        if self.path == "/config":
+            return self._json(200, {"ok": True, "settings": self.animator.get_settings()})
         if self.path.startswith("/state/"):
             state = self.path.split("/", 2)[2]
             return self._set_state(state, {"source": "get"})
         return self._json(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):
-        if self.path != "/signal":
+        if self.path not in ("/signal", "/config"):
             return self._json(404, {"ok": False, "error": "not found"})
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length).decode("utf-8")
@@ -184,6 +239,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw or "{}")
         except ValueError:
             return self._json(400, {"ok": False, "error": "invalid json"})
+        if self.path == "/config":
+            return self._update_config(payload)
         return self._set_state(payload.get("state"), payload)
 
     def log_message(self, fmt, *args):
@@ -192,8 +249,17 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _set_state(self, state, meta):
         if state not in VALID_STATES:
             return self._json(400, {"ok": False, "error": "unknown state", "state": state})
+        if state == "idle" and meta.get("source", "").endswith(":SessionStart"):
+            self.animator.rotate_idle_pixels()
         self.animator.set_state(state, meta)
         return self._json(200, {"ok": True, "state": state})
+
+    def _update_config(self, payload):
+        try:
+            settings = self.animator.update_settings(payload)
+        except ValueError as exc:
+            return self._json(400, {"ok": False, "error": str(exc)})
+        return self._json(200, {"ok": True, "settings": settings})
 
     def _json(self, status, body):
         data = json.dumps(body, sort_keys=True).encode("utf-8")
