@@ -92,6 +92,72 @@ You can override it per command:
 SIGNAL_RING_HOST=192.168.31.131 ~/.local/bin/ai-signal codex PreToolUse --session demo
 ```
 
+## Moving to Another Network or Mac
+
+When you take the Raspberry Pi to another network, its LAN IP will probably
+change. The Mac side only needs to know the Pi host and port, so reconnecting is
+usually just a one-command reconfiguration.
+
+### Same LAN, Bonjour Works
+
+If the new Mac and the Pi are on the same Wi-Fi/LAN, try the Pi's `.local` name
+first:
+
+```bash
+curl http://raspberrypi.local:8765/health
+sh mac/install_mac.sh raspberrypi.local
+python3 mac/install_toml_hooks.py
+python3 mac/install_refresh_agent.py
+```
+
+Then test a state change:
+
+```bash
+~/.local/bin/ai-signal codex PreToolUse --session test
+~/.local/bin/ai-signal codex Stop
+```
+
+### Same LAN, Bonjour Does Not Work
+
+Find the Pi's new IP address from your router, network scanner, or the Pi's
+terminal, then configure the Mac with that IP:
+
+```bash
+sh mac/install_mac.sh 10.20.30.45
+```
+
+If the wrapper is already installed, update only the saved host:
+
+```bash
+~/.local/bin/ai-signal manual configure --configure --host 10.20.30.45 --port 8765
+```
+
+### Best Long-Term Option: Tailscale
+
+Company Wi-Fi often blocks device-to-device LAN traffic, even when the Mac and
+Pi appear to be on the same network. For the most reliable portable setup,
+install Tailscale on both the Raspberry Pi and each Mac, then configure this
+project with the Pi's Tailscale IP or MagicDNS name:
+
+```bash
+sh mac/install_mac.sh raspberrypi
+```
+
+or:
+
+```bash
+sh mac/install_mac.sh 100.x.y.z
+```
+
+This keeps the signal light working across home, office, and travel networks
+without chasing changing LAN IPs.
+
+### Before You Leave
+
+Make sure the Pi can join the destination network. Either preconfigure the new
+Wi-Fi on the Pi, use Ethernet, or bring a known hotspot. If the Pi is offline,
+the Mac cannot discover or control the signal service.
+
 ## Codex Integration
 
 Current Codex desktop builds use lifecycle hooks in `~/.codex/config.toml`.
