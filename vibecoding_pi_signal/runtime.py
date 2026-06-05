@@ -7,7 +7,13 @@ from pathlib import Path
 
 from .client import SignalClient
 from .config import load_config
-from .states import EPHEMERAL_SECONDS, PRIORITY, STALE_SESSION_SECONDS, VALID_STATES
+from .states import (
+    ACTIVE_SESSION_SECONDS,
+    EPHEMERAL_SECONDS,
+    PRIORITY,
+    STALE_SESSION_SECONDS,
+    VALID_STATES,
+)
 
 
 class SessionStore:
@@ -43,6 +49,9 @@ class SignalRuntime:
         for session, item in sessions.items():
             state = item.get("state", "idle")
             if now - item.get("updated_at", 0) > STALE_SESSION_SECONDS:
+                continue
+            active_ttl = ACTIVE_SESSION_SECONDS.get(state)
+            if active_ttl is not None and now - item.get("updated_at", 0) > active_ttl:
                 continue
             ttl = EPHEMERAL_SECONDS.get(state)
             if ttl is not None and now - item.get("updated_at", 0) > ttl:
@@ -126,8 +135,8 @@ class SignalRuntime:
 
     def clear_all(self):
         self.store.save({})
-        response = self.client.post_state("off", source="runtime", session="all", text="")
-        return {"ok": True, "aggregate_state": "off", "response": response}
+        response = self.client.post_state("idle", source="runtime", session="all", text="")
+        return {"ok": True, "aggregate_state": "idle", "response": response}
 
     def refresh(self):
         sessions = self.prune_sessions(self.store.load())

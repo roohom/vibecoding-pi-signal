@@ -3,6 +3,7 @@
 VALID_STATES = {"idle", "thinking", "working", "permission", "blocked", "done", "off"}
 PRIORITY = {"blocked": 50, "permission": 40, "working": 30, "thinking": 25, "done": 10, "idle": 0, "off": -1}
 EPHEMERAL_SECONDS = {"done": 8}
+ACTIVE_SESSION_SECONDS = {"thinking": 20 * 60, "working": 20 * 60}
 STALE_SESSION_SECONDS = 12 * 60 * 60
 
 CODEX_EVENT_MAP = {
@@ -32,6 +33,7 @@ CLAUDE_EVENT_MAP = {
     "Notification": "permission",
     "PermissionRequest": "permission",
     "Stop": "idle",
+    "StopFailure": "blocked",
     "SubagentStop": "done",
     "SessionEnd": "done",
     "Error": "blocked",

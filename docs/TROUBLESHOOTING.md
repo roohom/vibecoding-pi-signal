@@ -12,6 +12,19 @@ Mac cannot reach Pi:
 curl http://192.168.31.131:8765/health
 ```
 
+Reset stuck sessions:
+
+```bash
+~/.local/bin/ai-signal manual clear --clear
+```
+
+This clears the Mac-side session store and returns the ring to `idle`.  To turn
+the LEDs off explicitly, send `off` as a state:
+
+```bash
+~/.local/bin/ai-signal manual off --state off --session manual-off
+```
+
 The terminal hangs when testing hooks manually:
 
 Use the current `mac/agent_hook.py`; it only reads stdin when data is present.

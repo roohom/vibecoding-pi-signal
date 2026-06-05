@@ -68,7 +68,8 @@ From this project directory on each Mac:
 
 ```bash
 sh mac/install_mac.sh 192.168.31.131
-python3 mac/install_toml_hooks.py
+python3 mac/install_toml_hooks.py       # Codex hooks
+python3 mac/install_claude_hooks.py     # Claude Code hooks
 python3 mac/install_refresh_agent.py
 ```
 
@@ -79,7 +80,11 @@ Manual tests:
 ~/.local/bin/ai-signal codex PreToolUse --session demo
 ~/.local/bin/ai-signal codex PermissionRequest --session demo
 ~/.local/bin/ai-signal codex Stop --session demo
+~/.local/bin/ai-signal claude PreToolUse --session demo
+~/.local/bin/ai-signal claude Notification --session demo
+~/.local/bin/ai-signal claude Stop --session demo
 ~/.local/bin/ai-signal manual clear --clear
+~/.local/bin/ai-signal manual off --state off --session manual-off
 ```
 
 The Pi address is stored in:
@@ -195,6 +200,40 @@ hooks are working:
 python3 mac/remove_legacy_notify.py
 ```
 
+## Claude Code Integration
+
+Claude Code reads lifecycle hooks from `~/.claude/settings.json`.  The
+installer writes a managed `"hooks"` block and preserves your other settings.
+
+```bash
+python3 mac/install_claude_hooks.py
+```
+
+Hook mapping:
+
+```text
+SessionStart      -> idle
+UserPromptSubmit  -> thinking
+PreToolUse        -> working
+PostToolUse       -> working
+Notification      -> permission
+PermissionRequest -> permission
+Stop              -> idle
+StopFailure       -> blocked
+SubagentStop      -> done
+SessionEnd        -> done
+```
+
+Re-running the installer is idempotent.  You can also install into a
+project-level file, but prefer a shared wrapper path if you commit the file for
+your team:
+
+```bash
+python3 mac/install_claude_hooks.py --settings .claude/settings.json
+```
+
+See [docs/CLAUDE_CODE_HOOKS.md](docs/CLAUDE_CODE_HOOKS.md) for details.
+
 ## Project Layout
 
 ```text
@@ -220,6 +259,7 @@ docs/ARCHITECTURE.md
 docs/INSTALL_MAC.md
 docs/INSTALL_PI.md
 docs/CODEX_HOOKS.md
+docs/CLAUDE_CODE_HOOKS.md
 docs/TROUBLESHOOTING.md
 ```
 

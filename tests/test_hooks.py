@@ -13,6 +13,13 @@ class HookMappingTest(unittest.TestCase):
     def test_error_payload_wins(self):
         self.assertEqual(event_to_state("codex", "PostToolUse", {"error": True}), "blocked")
 
+    def test_claude_core_events(self):
+        self.assertEqual(event_to_state("claude", "UserPromptSubmit", {}), "thinking")
+        self.assertEqual(event_to_state("claude", "PreToolUse", {}), "working")
+        self.assertEqual(event_to_state("claude", "PermissionRequest", {}), "permission")
+        self.assertEqual(event_to_state("claude", "StopFailure", {}), "blocked")
+        self.assertEqual(event_to_state("claude", "Stop", {}), "idle")
+
     def test_payload_session_detection(self):
         self.assertTrue(payload_has_session({"session_id": "abc"}))
         self.assertFalse(payload_has_session({}))

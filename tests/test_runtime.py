@@ -38,11 +38,11 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(result["sessions"], {})
         self.assertEqual(client.calls[-1][0], "idle")
 
-    def test_clear_sends_off(self):
+    def test_clear_sends_idle(self):
         runtime, client = self.make_runtime()
         result = runtime.clear_all()
-        self.assertEqual(result["aggregate_state"], "off")
-        self.assertEqual(client.calls[-1][0], "off")
+        self.assertEqual(result["aggregate_state"], "idle")
+        self.assertEqual(client.calls[-1][0], "idle")
 
     def test_clear_sessions_by_prefix_keeps_other_agents(self):
         runtime, client = self.make_runtime()
@@ -65,6 +65,30 @@ class RuntimeTest(unittest.TestCase):
             }
         }
         self.assertEqual(runtime.prune_sessions(sessions, now=999999), {})
+
+    def test_stale_active_session_is_pruned(self):
+        runtime, _client = self.make_runtime()
+        sessions = {
+            "old": {
+                "state": "working",
+                "source": "test",
+                "text": "",
+                "updated_at": 1,
+            }
+        }
+        self.assertEqual(runtime.prune_sessions(sessions, now=1302), {})
+
+    def test_permission_does_not_use_active_session_ttl(self):
+        runtime, _client = self.make_runtime()
+        sessions = {
+            "old": {
+                "state": "permission",
+                "source": "test",
+                "text": "",
+                "updated_at": 1,
+            }
+        }
+        self.assertEqual(runtime.prune_sessions(sessions, now=1302), sessions)
 
 
 if __name__ == "__main__":
