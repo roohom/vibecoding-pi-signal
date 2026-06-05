@@ -168,7 +168,9 @@ class Animator:
             self._spinner(phase, color(10, 0, 24), color(0, 12, 24), color(0, 0, 2))
             return 0.14
         if state == "working":
-            self._chase(phase, color(0, 6, 5), color(0, 1, 1))
+            level = self.get_settings()["idle_level"]
+            trail = max(1, level // 3)
+            self._chase(phase, color(0, level, level), color(0, trail, trail))
             return 0.28
         if state == "permission":
             self.ring.fill(color(28, 16, 0) if phase % 8 < 3 else 0)
