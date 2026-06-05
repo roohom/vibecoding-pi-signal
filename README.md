@@ -55,12 +55,17 @@ BRIGHTNESS=24 LED_COUNT=8 LED_PIN=18 PORT=8765 sh pi/install_service.sh
 Endpoints:
 
 ```text
+GET  /
 GET  /health
 GET  /config
 POST /config {"idle_level":11,"idle_pixels":4,"idle_offset":0}
 GET  /state/<state>
 POST /signal {"state":"working","source":"codex","session":"abc"}
 ```
+
+Open `http://<pi-host>:8765/` for the web console.  It can inspect the current
+state, test every state, tune idle brightness/pixels/offset, and copy the Mac
+configuration command for the current host.
 
 ## Mac
 
@@ -112,6 +117,7 @@ first:
 
 ```bash
 curl http://raspberrypi.local:8765/health
+open http://raspberrypi.local:8765/
 sh mac/install_mac.sh raspberrypi.local
 python3 mac/install_toml_hooks.py
 python3 mac/install_refresh_agent.py

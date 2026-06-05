@@ -14,6 +14,11 @@ try:
 except ImportError:  # pragma: no cover
     from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 
+try:
+    from urllib.parse import urlparse
+except ImportError:  # pragma: no cover
+    from urlparse import urlparse
+
 from .states import VALID_STATES
 
 try:
@@ -31,6 +36,7 @@ LED_INVERT = False
 LED_BRIGHTNESS = 24
 LED_CHANNEL = 0
 DEFAULT_SETTINGS = {"idle_level": 11, "idle_pixels": 4, "idle_offset": 0}
+STATE_ORDER = ("idle", "thinking", "working", "permission", "blocked", "done", "off")
 
 
 class ReusableHTTPServer(HTTPServer):
@@ -80,8 +86,8 @@ class SignalRing:
 class Animator:
     def __init__(self, ring):
         self.ring = ring
-        self.state = "off"
-        self.meta = {}
+        self.state = "idle"
+        self.meta = {"source": "server:start"}
         self.settings = dict(DEFAULT_SETTINGS)
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -218,22 +224,320 @@ class Animator:
         return sorted(set(int(index * count / float(lit_count)) for index in range(lit_count)))
 
 
+def render_console_html():
+    states = json.dumps(STATE_ORDER)
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi Signal Console</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8f5;
+      --panel: #ffffff;
+      --ink: #1d2524;
+      --muted: #65706e;
+      --line: #d9dfdc;
+      --accent: #167c75;
+      --danger: #b3261e;
+      --warn: #9b6400;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+    }
+    h1, h2 { margin: 0; font-size: 18px; letter-spacing: 0; }
+    h2 { font-size: 15px; }
+    main {
+      width: min(1040px, calc(100vw - 32px));
+      margin: 18px auto 28px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+      gap: 16px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #a0a8a5;
+      box-shadow: 0 0 0 4px rgba(22, 124, 117, 0.1);
+      flex: 0 0 auto;
+    }
+    .state-name { font-size: 26px; font-weight: 700; }
+    .muted { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+    button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    button.danger { color: var(--danger); }
+    label {
+      display: grid;
+      gap: 6px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    input[type="range"] { width: 100%; }
+    input[type="number"], input[type="text"] {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 7px 9px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 72px;
+      gap: 10px;
+      align-items: end;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin: 12px 0 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f2f5f3;
+      color: #26302e;
+      min-height: 92px;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: 100px minmax(0, 1fr);
+      gap: 7px 10px;
+      margin-top: 14px;
+      color: var(--muted);
+    }
+    .meta b { color: var(--ink); font-weight: 600; }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    @media (max-width: 760px) {
+      header { align-items: flex-start; flex-direction: column; padding: 16px; }
+      main { grid-template-columns: 1fr; width: calc(100vw - 24px); margin-top: 12px; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .state-name { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Pi Signal Console</h1>
+      <div class="muted" id="endpoint"></div>
+    </div>
+    <button class="primary" id="refresh">Refresh</button>
+  </header>
+  <main>
+    <section>
+      <div class="status">
+        <div class="dot" id="dot"></div>
+        <div>
+          <div class="state-name" id="state">unknown</div>
+          <div class="muted" id="summary">Waiting for signal service</div>
+        </div>
+      </div>
+      <div class="grid" id="stateButtons"></div>
+      <div class="actions">
+        <button id="clearIdle">Clear to idle</button>
+        <button class="danger" id="turnOff">Turn off</button>
+      </div>
+      <div class="meta" id="meta"></div>
+    </section>
+    <section>
+      <h2>Idle settings</h2>
+      <label>
+        Idle brightness
+        <div class="row">
+          <input id="idleLevel" type="range" min="0" max="255" value="11">
+          <input id="idleLevelNumber" type="number" min="0" max="255" value="11">
+        </div>
+      </label>
+      <label>
+        Lit pixels
+        <input id="idlePixels" type="number" min="0" max="64" value="4">
+      </label>
+      <label>
+        Pixel offset
+        <input id="idleOffset" type="number" min="0" max="63" value="0">
+      </label>
+      <div class="actions">
+        <button class="primary" id="saveConfig">Apply</button>
+        <button id="testIdle">Apply and show idle</button>
+      </div>
+      <h2 style="margin-top:18px">Mac command</h2>
+      <input id="macCommand" type="text" readonly>
+      <pre id="log"></pre>
+    </section>
+  </main>
+  <script>
+    const states = """ + states + """;
+    const colors = {
+      idle: "#2f8f46",
+      thinking: "#5798db",
+      working: "#20a59b",
+      permission: "#d99a23",
+      blocked: "#c9342f",
+      done: "#34a853",
+      off: "#8a928f"
+    };
+    const $ = (id) => document.getElementById(id);
+    const log = (text) => { $("log").textContent = new Date().toLocaleTimeString() + "  " + text + "\\n" + $("log").textContent; };
+    const api = async (path, options = {}) => {
+      const res = await fetch(path, options);
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || res.statusText);
+      return data;
+    };
+    const setNumberPair = (value) => {
+      $("idleLevel").value = value;
+      $("idleLevelNumber").value = value;
+    };
+    const setState = async (state, source = "web-console") => {
+      await api("/signal", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({state, source, session: "web-console", text: state})
+      });
+      log("state -> " + state);
+      await refresh();
+    };
+    const saveConfig = async () => {
+      const payload = {
+        idle_level: Number($("idleLevelNumber").value),
+        idle_pixels: Number($("idlePixels").value),
+        idle_offset: Number($("idleOffset").value)
+      };
+      const data = await api("/config", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      });
+      applySettings(data.settings);
+      log("config saved");
+    };
+    const applySettings = (settings) => {
+      if (!settings) return;
+      setNumberPair(settings.idle_level);
+      $("idlePixels").value = settings.idle_pixels;
+      $("idleOffset").value = settings.idle_offset;
+    };
+    const refresh = async () => {
+      try {
+        const data = await api("/health");
+        $("state").textContent = data.state;
+        $("summary").textContent = data.meta && data.meta.source ? data.meta.source : "No source metadata";
+        $("dot").style.background = colors[data.state] || colors.off;
+        applySettings(data.settings);
+        const meta = data.meta || {};
+        $("meta").innerHTML = [
+          ["source", meta.source || ""],
+          ["session", meta.session || ""],
+          ["text", meta.text || ""],
+          ["idle", JSON.stringify(data.settings || {})]
+        ].map(([k, v]) => "<span>" + k + "</span><b>" + String(v).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + "</b>").join("");
+      } catch (err) {
+        $("summary").textContent = err.message;
+        log("error: " + err.message);
+      }
+    };
+    const init = () => {
+      $("endpoint").textContent = location.origin;
+      $("macCommand").value = "~/.local/bin/ai-signal manual configure --configure --host " + location.hostname + " --port " + location.port;
+      $("stateButtons").innerHTML = states.map((state) => "<button data-state='" + state + "'>" + state + "</button>").join("");
+      $("stateButtons").addEventListener("click", (event) => {
+        const state = event.target.getAttribute("data-state");
+        if (state) setState(state).catch((err) => log("error: " + err.message));
+      });
+      $("refresh").onclick = refresh;
+      $("clearIdle").onclick = () => setState("idle", "web-console:clear").catch((err) => log("error: " + err.message));
+      $("turnOff").onclick = () => setState("off").catch((err) => log("error: " + err.message));
+      $("saveConfig").onclick = () => saveConfig().catch((err) => log("error: " + err.message));
+      $("testIdle").onclick = () => saveConfig().then(() => setState("idle")).catch((err) => log("error: " + err.message));
+      $("idleLevel").oninput = () => { $("idleLevelNumber").value = $("idleLevel").value; };
+      $("idleLevelNumber").oninput = () => { $("idleLevel").value = $("idleLevelNumber").value; };
+      refresh();
+      setInterval(refresh, 3000);
+    };
+    init();
+  </script>
+</body>
+</html>
+"""
+
+
 class RequestHandler(BaseHTTPRequestHandler):
     animator = None
 
     def do_GET(self):
-        if self.path == "/health":
+        path = urlparse(self.path).path
+        if path in ("/", "/console"):
+            return self._html(200, render_console_html())
+        if path == "/health":
             state, meta = self.animator.get_state()
             return self._json(200, {"ok": True, "state": state, "meta": meta, "settings": self.animator.get_settings()})
-        if self.path == "/config":
+        if path == "/config":
             return self._json(200, {"ok": True, "settings": self.animator.get_settings()})
-        if self.path.startswith("/state/"):
-            state = self.path.split("/", 2)[2]
+        if path.startswith("/state/"):
+            state = path.split("/", 2)[2]
             return self._set_state(state, {"source": "get"})
         return self._json(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):
-        if self.path not in ("/signal", "/config"):
+        path = urlparse(self.path).path
+        if path not in ("/signal", "/config"):
             return self._json(404, {"ok": False, "error": "not found"})
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length).decode("utf-8")
@@ -241,7 +545,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw or "{}")
         except ValueError:
             return self._json(400, {"ok": False, "error": "invalid json"})
-        if self.path == "/config":
+        if path == "/config":
             return self._update_config(payload)
         return self._set_state(payload.get("state"), payload)
 
@@ -267,6 +571,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         data = json.dumps(body, sort_keys=True).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _html(self, status, body):
+        data = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

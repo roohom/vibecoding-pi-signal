@@ -12,6 +12,20 @@ Mac cannot reach Pi:
 curl http://192.168.31.131:8765/health
 ```
 
+Pi moved to a new IP:
+
+```bash
+curl http://NEW_IP:8765/health
+~/.local/bin/ai-signal manual configure --configure --host NEW_IP --port 8765
+~/.local/bin/ai-signal manual clear --clear
+```
+
+You can also open the web console to test states and tune idle brightness:
+
+```bash
+open http://NEW_IP:8765/
+```
+
 Reset stuck sessions:
 
 ```bash
