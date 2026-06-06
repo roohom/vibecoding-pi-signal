@@ -11,11 +11,12 @@ from pathlib import Path
 from ..client import SignalClient
 from ..config import load_config, write_config
 from ..runtime import SignalRuntime
-from ..states import AGENT_EVENT_MAPS
+from ..states import AGENT_EVENT_MAPS, is_codex_background_text
 
 
 SESSION_KEYS = ("session_id", "sessionId", "conversation_id", "conversationId", "cwd")
 TERMINAL_EVENTS = {"Stop", "stop", "SessionEnd", "sessionEnd"}
+RUNTIME_REFRESH_EVENTS = {"runtime:refresh", "runtimeRefresh"}
 
 
 def read_stdin_json():
@@ -55,7 +56,24 @@ def event_to_state(agent, event, payload):
     if payload.get("error") or payload.get("blocked"):
         return "blocked"
     mapping = AGENT_EVENT_MAPS.get(agent, {})
+    if agent == "codex":
+        return mapping.get(event, "idle")
     return mapping.get(event, "working")
+
+
+def should_ignore_event(agent, event, payload, text=""):
+    if (
+        agent != "codex"
+        or payload.get("state")
+        or payload.get("error")
+        or payload.get("blocked")
+    ):
+        return False
+    if event in RUNTIME_REFRESH_EVENTS or payload.get("source") in RUNTIME_REFRESH_EVENTS:
+        return True
+    if is_codex_background_text(text) or is_codex_background_text(payload.get("prompt")):
+        return True
+    return event not in AGENT_EVENT_MAPS.get(agent, {})
 
 
 def payload_has_session(payload):
@@ -119,29 +137,33 @@ def main(argv=None):
             else:
                 payload = read_stdin_json()
                 event = args.event or payload.get("hook_event_name") or payload.get("event") or payload.get("type") or "manual"
-                state = args.state or event_to_state(args.agent, event, payload)
                 session = args.session or infer_session(args.agent, payload, os.getcwd())
                 text = args.text or infer_text(event, payload)
-                append_hook_log(args.agent, event, session, state)
-                source = "{}:{}".format(args.agent, event)
-                if (
-                    args.agent in ("codex", "claude")
-                    and event in TERMINAL_EVENTS
-                    and not args.session
-                    and not payload_has_session(payload)
-                ):
-                    result = runtime.clear_sessions_by_prefix(
-                        "{}:".format(args.agent),
-                        source=source,
-                        text=text,
-                    )
+                if not args.state and should_ignore_event(args.agent, event, payload, text):
+                    append_hook_log(args.agent, event, session, "ignored")
+                    result = {"ok": True, "ignored": True, "event": event, "session": session}
                 else:
-                    result = runtime.set_session_state(
-                        session=session,
-                        state=state,
-                        source=source,
-                        text=text,
-                    )
+                    state = args.state or event_to_state(args.agent, event, payload)
+                    append_hook_log(args.agent, event, session, state)
+                    source = "{}:{}".format(args.agent, event)
+                    if (
+                        args.agent in ("codex", "claude")
+                        and event in TERMINAL_EVENTS
+                        and not args.session
+                        and not payload_has_session(payload)
+                    ):
+                        result = runtime.clear_sessions_by_prefix(
+                            "{}:".format(args.agent),
+                            source=source,
+                            text=text,
+                        )
+                    else:
+                        result = runtime.set_session_state(
+                            session=session,
+                            state=state,
+                            source=source,
+                            text=text,
+                        )
     except Exception as exc:
         print("signal hook failed: {}".format(exc), file=sys.stderr)
         return 1
@@ -151,7 +173,16 @@ def main(argv=None):
     if args.json:
         print(json.dumps(result, sort_keys=True))
     else:
-        action = result.get("session_state") or ("refresh" if args.refresh else "clear" if args.clear else "configure")
+        if result.get("session_state"):
+            action = result["session_state"]
+        elif result.get("ignored"):
+            action = "ignored"
+        elif args.refresh:
+            action = "refresh"
+        elif args.clear:
+            action = "clear"
+        else:
+            action = "configure"
         print("{} -> {}".format(action, result.get("aggregate_state", "ok")))
     return 0
 

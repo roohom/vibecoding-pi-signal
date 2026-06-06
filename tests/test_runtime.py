@@ -90,6 +90,37 @@ class RuntimeTest(unittest.TestCase):
         }
         self.assertEqual(runtime.prune_sessions(sessions, now=1302), sessions)
 
+    def test_refresh_prunes_stored_codex_ambient_session(self):
+        runtime, client = self.make_runtime()
+        runtime.store.save(
+            {
+                "codex:ambient": {
+                    "state": "thinking",
+                    "source": "codex:UserPromptSubmit",
+                    "text": "You are an expert at upholding safety and compliance standards for Codex ambient suggestions.",
+                    "updated_at": 1000,
+                }
+            }
+        )
+
+        result = runtime.refresh()
+
+        self.assertEqual(result["aggregate_state"], "idle")
+        self.assertEqual(result["sessions"], {})
+        self.assertEqual(runtime.store.load(), {})
+        self.assertEqual(client.calls[-1], ("idle", "runtime:refresh", "aggregate", ""))
+
+    def test_clear_all_prevents_old_working_session_from_refreshing(self):
+        runtime, client = self.make_runtime()
+        runtime.set_session_state("codex:a", "working", "test")
+
+        runtime.clear_all()
+        result = runtime.refresh()
+
+        self.assertEqual(result["aggregate_state"], "idle")
+        self.assertEqual(result["sessions"], {})
+        self.assertEqual(client.calls[-1][0], "idle")
+
 
 if __name__ == "__main__":
     unittest.main()

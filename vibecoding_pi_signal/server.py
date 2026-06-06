@@ -8,6 +8,7 @@ import math
 import signal
 import sys
 import threading
+from pathlib import Path
 
 try:
     from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -19,6 +20,8 @@ try:
 except ImportError:  # pragma: no cover
     from urlparse import urlparse
 
+from .config import load_config
+from .runtime import SessionStore
 from .states import VALID_STATES
 
 try:
@@ -518,6 +521,11 @@ def render_console_html():
 """
 
 
+def clear_local_sessions():
+    config = load_config()
+    SessionStore(Path(config.state_dir) / "sessions.json").save({})
+
+
 class RequestHandler(BaseHTTPRequestHandler):
     animator = None
 
@@ -557,6 +565,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": "unknown state", "state": state})
         if state == "idle" and meta.get("source", "").endswith(":SessionStart"):
             self.animator.rotate_idle_pixels()
+        if state == "idle" and meta.get("source") == "web-console:clear":
+            clear_local_sessions()
         self.animator.set_state(state, meta)
         return self._json(200, {"ok": True, "state": state})
 

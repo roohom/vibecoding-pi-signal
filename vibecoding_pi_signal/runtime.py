@@ -13,6 +13,7 @@ from .states import (
     PRIORITY,
     STALE_SESSION_SECONDS,
     VALID_STATES,
+    is_codex_background_text,
 )
 
 
@@ -47,6 +48,8 @@ class SignalRuntime:
         now = now or time.time()
         pruned = {}
         for session, item in sessions.items():
+            if self.should_ignore_stored_session(session, item):
+                continue
             state = item.get("state", "idle")
             if now - item.get("updated_at", 0) > STALE_SESSION_SECONDS:
                 continue
@@ -59,6 +62,12 @@ class SignalRuntime:
             if state != "off":
                 pruned[session] = item
         return pruned
+
+    def should_ignore_stored_session(self, session, item):
+        source = item.get("source", "")
+        if not session.startswith("codex:") and not source.startswith("codex:"):
+            return False
+        return is_codex_background_text(item.get("text", ""))
 
     def aggregate_state(self, sessions):
         if not sessions:

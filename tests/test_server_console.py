@@ -1,7 +1,12 @@
 import io
 import json
+import tempfile
 import unittest
+import unittest.mock
+from pathlib import Path
 
+from vibecoding_pi_signal.config import SignalConfig
+from vibecoding_pi_signal.runtime import SessionStore
 from vibecoding_pi_signal.server import RequestHandler, render_console_html
 
 
@@ -105,6 +110,23 @@ class ServerConsoleTest(unittest.TestCase):
         self.assertEqual(handler.status, 200)
         self.assertEqual(handler.body["state"], "idle")
         self.assertEqual(self.animator.state, "idle")
+
+    def test_console_clear_empties_local_session_store(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            store = SessionStore(Path(tempdir) / "sessions.json")
+            store.save({"codex:a": {"state": "working", "source": "test", "text": "", "updated_at": 1}})
+            config = SignalConfig(host="localhost", port=8765, state_dir=tempdir)
+
+            with unittest.mock.patch("vibecoding_pi_signal.server.load_config", return_value=config):
+                handler = TestableHandler(
+                    "POST",
+                    "/signal",
+                    {"state": "idle", "source": "web-console:clear", "session": "web-console"},
+                )
+                handler.do_POST()
+
+            self.assertEqual(handler.status, 200)
+            self.assertEqual(store.load(), {})
 
 
 if __name__ == "__main__":

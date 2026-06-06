@@ -39,3 +39,15 @@ CLAUDE_EVENT_MAP = {
     "Error": "blocked",
 }
 AGENT_EVENT_MAPS = {"codex": CODEX_EVENT_MAP, "claude": CLAUDE_EVENT_MAP}
+
+CODEX_BACKGROUND_TEXT_MARKERS = (
+    "codex ambient suggestions",
+    "generate 0 to 3 hyperpersonalized suggestions",
+    "hyperpersonalized suggestions for what this user can do with codex",
+    "safety and compliance standards for codex ambient suggestions",
+)
+
+
+def is_codex_background_text(text):
+    value = (text or "").lower()
+    return any(marker in value for marker in CODEX_BACKGROUND_TEXT_MARKERS)
